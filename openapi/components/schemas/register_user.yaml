@@ -1,0 +1,18 @@
+type: object
+required:
+  - name
+  - username
+  - password
+properties:
+  name:
+    type: string
+    minLength: 3
+    maxLength: 100
+  username:
+    type: string
+    minLength: 3
+    maxLength: 50
+  password:
+    type: string
+    minLength: 6
+    maxLength: 100

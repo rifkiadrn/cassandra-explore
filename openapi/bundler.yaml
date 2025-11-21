@@ -1,0 +1,45 @@
+openapi: 3.1.0
+info:
+  contact:
+    email: rifkiadrn12@gmail.com
+    name: Rifki Adrian
+  description: |2-
+    Open API specification which describes the API for Data ELT
+  title:
+    Data ELT API
+  version: 1.0.0
+
+servers:
+  - url: /
+
+paths:
+  /auth/login:
+    $ref: './paths/auth.yaml'
+  /users:
+    $ref: './paths/user.yaml'
+  /blogs:
+    $ref: './paths/blog.yaml'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      $ref: './components/securities/bearer_auth.yaml'
+    ApiKeyAuth:
+      $ref: './components/securities/api_key_auth.yaml'
+  schemas:
+    LoginUser:
+      $ref: './components/schemas/login_user.yaml'
+    LoginResponse:
+      $ref: './components/schemas/login_response.yaml'
+    User: 
+      $ref: './components/schemas/user.yaml'
+    RegisterUser:
+      $ref: './components/schemas/register_user.yaml'
+    Blog:
+      $ref: './components/schemas/blog.yaml'
+    CreateBlogRequest:
+      $ref: './components/schemas/create_blog_request.yaml'
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []

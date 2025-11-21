@@ -1,0 +1,22 @@
+{
+    "app": {
+      "name": "cassandra-explore",
+      "port": 8080
+    },
+    "web": {
+      "prefork": false
+    },
+    "log": {
+      "level": 6
+    },
+    "database": {
+      "hosts": ["cassandra-seed:9042"],
+      "host": "cassandra-seed",
+      "keyspace": "blogs",
+      "pool": {
+        "idle": 10,
+        "max": 100,
+        "lifetime": 300
+      }
+    }
+  }

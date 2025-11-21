@@ -1,0 +1,19 @@
+type: object
+required:
+  - id
+  - content
+  - author_id
+  - username
+  - ts
+properties:
+  id:
+    type: string
+  content:
+    type: string
+  authorId:
+    type: string
+  username:
+    type: string
+  ts:
+    type: integer
+    format: int64

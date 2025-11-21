@@ -1,0 +1,26 @@
+type: object
+required:
+  - id
+  - name
+  - username
+  - password
+  - token
+  - created_at
+  - updated_at
+properties:
+  id:
+    type: string
+  name:
+    type: string
+  username:
+    type: string
+  password:
+    type: string
+  token:
+    type: string
+  created_at:
+    type: integer
+    format: int64
+  updated_at:
+    type: integer
+    format: int64

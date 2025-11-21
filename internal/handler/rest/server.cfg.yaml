@@ -1,0 +1,5 @@
+package: rest
+generate:
+  fiber-server: true
+  embedded-spec: true
+output: ./handler/rest/server.gen.go

@@ -1,0 +1,24 @@
+post:
+  operationId: loginUser
+  summary: Login user
+  description: Authenticate user and return JWT token.
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../components/schemas/login_user.yaml'
+  responses:
+    '200':
+      description: Login successful.
+      content:
+        application/json:
+          schema:
+            $ref: '../components/schemas/login_response.yaml'
+    '400':
+      description: Invalid input
+    '401':
+      description: Invalid credentials
+    '500':
+      description: Internal server error

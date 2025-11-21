@@ -1,0 +1,202 @@
+openapi: 3.1.0
+info:
+  contact:
+    email: rifkiadrn12@gmail.com
+    name: Rifki Adrian
+  description: Open API specification which describes the API for Data ELT
+  title: Data ELT API
+  version: 1.0.0
+servers:
+  - url: /
+paths:
+  /auth/login:
+    post:
+      operationId: loginUser
+      summary: Login user
+      description: Authenticate user and return JWT token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginUser'
+      responses:
+        '200':
+          description: Login successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid input
+        '401':
+          description: Invalid credentials
+        '500':
+          description: Internal server error
+  /users:
+    post:
+      operationId: registerUser
+      summary: Register a new user
+      description: Create a new user account.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterUser'
+      responses:
+        '201':
+          description: User created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input
+        '409':
+          description: Username already exists
+        '500':
+          description: Internal server error
+  /blogs:
+    get:
+      summary: Get all blogs
+      operationId: blogs
+      responses:
+        '200':
+          description: List of blogs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Blog'
+    post:
+      summary: Create a blog
+      operationId: createBlog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBlogRequest'
+      responses:
+        '201':
+          description: Blog created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Blog'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+  schemas:
+    LoginUser:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+    LoginResponse:
+      type: object
+      required:
+        - token
+        - user
+      properties:
+        token:
+          type: string
+          description: JWT token for authentication
+        user:
+          $ref: '#/components/schemas/User'
+    User:
+      type: object
+      required:
+        - id
+        - name
+        - username
+        - password
+        - token
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        token:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+    RegisterUser:
+      type: object
+      required:
+        - name
+        - username
+        - password
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+    Blog:
+      type: object
+      required:
+        - id
+        - content
+        - author_id
+        - username
+        - ts
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        authorId:
+          type: string
+        username:
+          type: string
+        ts:
+          type: integer
+          format: int64
+    CreateBlogRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []

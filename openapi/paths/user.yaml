@@ -1,0 +1,24 @@
+post:
+  operationId: registerUser
+  summary: Register a new user
+  description: Create a new user account.
+  security: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '../components/schemas/register_user.yaml'
+  responses:
+    '201':
+      description: User created successfully.
+      content:
+        application/json:
+          schema:
+            $ref: '../components/schemas/user.yaml'
+    '400':
+      description: Invalid input
+    '409':
+      description: Username already exists
+    '500':
+      description: Internal server error

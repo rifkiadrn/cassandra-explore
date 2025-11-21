@@ -1,0 +1,29 @@
+get:
+  summary: Get all blogs
+  operationId: blogs
+  responses:
+    "200":
+      description: List of blogs
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: "../components/schemas/blog.yaml"
+
+post:
+  summary: Create a blog
+  operationId: createBlog
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: "../components/schemas/create_blog_request.yaml"
+  responses:
+    "201":
+      description: Blog created
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/blog.yaml"

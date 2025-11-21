@@ -1,0 +1,60 @@
+FROM golang:latest as builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+# Add debugging and ensure the build works
+RUN ls -la ./cmd/app/
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./out/app ./cmd/app
+RUN ls -la ./out/
+
+# -------------------
+FROM alpine:latest  
+# ARG USERNAME=defaultuser
+# ARG USER_UID=1000
+# ARG USER_GID=$USER_UID
+
+WORKDIR /app
+
+# Add necessary dependencies for setup
+RUN apk add sudo libcap curl tzdata --no-cache
+
+# Create the user
+# RUN addgroup --gid $USER_GID $USERNAME \
+#     && adduser -u $USER_UID -G $USERNAME -h /home/$USERNAME -D $USERNAME \
+#     && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+#     && chmod 0440 /etc/sudoers.d/$USERNAME
+
+# install dbmate for db migration related stuff - fix architecture detection
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; elif [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi && \
+    curl -fsSL -o /usr/local/bin/dbmate "https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-${ARCH}" && \
+    chmod +x /usr/local/bin/dbmate
+
+ARG COMMIT_HASH=local
+# get the hash of latest commit so we can fast and
+# accurately identify the running code in deployment
+RUN echo "${COMMIT_HASH}" > ./hash
+
+COPY --from=builder /app/files ./files
+COPY --from=builder /app/out/app ./app
+COPY --from=builder /app/db ./db
+COPY --from=builder /app/config.json ./config.json
+
+# Add debugging to verify files exist
+RUN ls -la /app/
+RUN ls -la /app/app
+
+RUN chmod +x ./files/deployment/entrypoint.sh
+# RUN chmod +x ./files/deployment/dbmate.sh
+RUN chmod +x /app/app
+# RUN chown $USERNAME:$USERNAME /app/app
+# RUN chown $USERNAME:$USERNAME ./files/deployment/entrypoint.sh
+
+# USER $USERNAME
+
+EXPOSE 8080
+
+ENTRYPOINT [ "./files/deployment/entrypoint.sh" ]
+CMD [ "/app/app" ]

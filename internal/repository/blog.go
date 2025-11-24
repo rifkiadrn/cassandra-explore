@@ -7,16 +7,26 @@ import (
 	"github.com/rifkiadrn/cassandra-explore/internal/entity"
 	model_db "github.com/rifkiadrn/cassandra-explore/internal/model/db"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 type BlogRepository struct {
-	Log *logrus.Logger
+	db  *gorm.DB
+	log *logrus.Logger
 }
 
-func NewBlogRepository(log *logrus.Logger) BlogRepository {
+func NewBlogRepository(db *gorm.DB, log *logrus.Logger) BlogRepository {
 	return BlogRepository{
-		Log: log,
+		db:  db,
+		log: log,
 	}
+}
+
+func (r *BlogRepository) getDB(ctx context.Context) *gorm.DB {
+	if tx := context_db.GetTx(ctx); tx != nil {
+		return tx
+	}
+	return r.db
 }
 
 // entityToDBBlog converts domain entity to DB model
@@ -43,12 +53,7 @@ func (r BlogRepository) dbToEntityBlog(db model_db.Blog) *entity.Blog {
 func (r BlogRepository) Create(ctx context.Context, blog entity.Blog) (*entity.Blog, error) {
 	dbBlog := r.entityToDBBlog(blog)
 
-	db, err := context_db.GetTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := db.Create(&dbBlog).Error; err != nil {
+	if err := r.getDB(ctx).Create(&dbBlog).Error; err != nil {
 		return nil, err
 	}
 
@@ -57,13 +62,8 @@ func (r BlogRepository) Create(ctx context.Context, blog entity.Blog) (*entity.B
 
 // FindAll finds all blogs for a user
 func (r BlogRepository) FindAll(ctx context.Context, userID string) ([]*entity.Blog, error) {
-	db, err := context_db.GetTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	var dbBlogs []model_db.Blog
-	if err := db.Where("user_id = ?", userID).Find(&dbBlogs).Error; err != nil {
+	if err := r.getDB(ctx).Where("user_id = ?", userID).Find(&dbBlogs).Error; err != nil {
 		return nil, err
 	}
 

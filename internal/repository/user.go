@@ -2,24 +2,33 @@ package repository
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	context_db "github.com/rifkiadrn/cassandra-explore/internal/context/db"
 	"github.com/rifkiadrn/cassandra-explore/internal/entity"
 	model_db "github.com/rifkiadrn/cassandra-explore/internal/model/db"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 // UserRepository implements the user repository interface
 type UserRepository struct {
-	Log *logrus.Logger
+	db  *gorm.DB
+	log *logrus.Logger
 }
 
-func NewUserRepository(log *logrus.Logger) UserRepository {
+func NewUserRepository(db *gorm.DB, log *logrus.Logger) UserRepository {
 	return UserRepository{
-		Log: log,
+		db:  db,
+		log: log,
 	}
+}
+
+func (r *UserRepository) getDB(ctx context.Context) *gorm.DB {
+	if tx := context_db.GetTx(ctx); tx != nil {
+		return tx
+	}
+	return r.db
 }
 
 // entityToDBUser converts domain entity to DB model
@@ -51,12 +60,7 @@ func (r UserRepository) dbToEntityUser(db model_db.User) *entity.User {
 func (r UserRepository) Create(ctx context.Context, user entity.User) (*entity.User, error) {
 	dbUser := r.entityToDBUser(user)
 
-	db, err := context_db.GetTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := db.Create(&dbUser).Error; err != nil {
+	if err := r.getDB(ctx).Create(&dbUser).Error; err != nil {
 		return nil, err
 	}
 
@@ -65,13 +69,8 @@ func (r UserRepository) Create(ctx context.Context, user entity.User) (*entity.U
 
 // FindById finds a user by ID
 func (r UserRepository) FindById(ctx context.Context, userID string) (*entity.User, error) {
-	db, err := context_db.GetTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	var dbUser model_db.User
-	if err := db.Where("id = ?", userID).First(&dbUser).Error; err != nil {
+	if err := r.getDB(ctx).Where("id = ?", userID).First(&dbUser).Error; err != nil {
 		return nil, err
 	}
 
@@ -80,13 +79,8 @@ func (r UserRepository) FindById(ctx context.Context, userID string) (*entity.Us
 
 // FindByUsername finds a user by username
 func (r UserRepository) FindByUsername(ctx context.Context, username string) (*entity.User, error) {
-	db, err := context_db.GetTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	var dbUser model_db.User
-	if err := db.Where("username = ?", username).First(&dbUser).Error; err != nil {
+	if err := r.getDB(ctx).Where("username = ?", username).First(&dbUser).Error; err != nil {
 		return nil, err
 	}
 
@@ -95,12 +89,7 @@ func (r UserRepository) FindByUsername(ctx context.Context, username string) (*e
 
 // UpdateOnlineStatus updates a user's online status
 func (r UserRepository) UpdateOnlineStatus(ctx context.Context, userID string, isOnline bool) error {
-	db, err := context_db.GetTx(ctx)
-	if err != nil {
-		return err
-	}
-
-	return db.Model(&model_db.User{}).
+	return r.getDB(ctx).Model(&model_db.User{}).
 		Where("id = ?", userID).
 		Updates(map[string]interface{}{
 			"is_online": isOnline,
@@ -110,13 +99,8 @@ func (r UserRepository) UpdateOnlineStatus(ctx context.Context, userID string, i
 
 // GetOnlineUsers gets all online users
 func (r UserRepository) GetOnlineUsers(ctx context.Context) ([]*entity.User, error) {
-	db, err := context_db.GetTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	var dbUsers []model_db.User
-	if err := db.Where("is_online = true").Find(&dbUsers).Error; err != nil {
+	if err := r.getDB(ctx).Where("is_online = true").Find(&dbUsers).Error; err != nil {
 		return nil, err
 	}
 
@@ -130,13 +114,6 @@ func (r UserRepository) GetOnlineUsers(ctx context.Context) ([]*entity.User, err
 }
 
 func (r UserRepository) Update(ctx context.Context, existingUser entity.User, updatedUser entity.User) (*entity.User, error) {
-	db, err := context_db.GetTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Printf("existingUser: %+v\n", updatedUser)
-
 	// Patch changes in updatedUser to existingUser
 	user := existingUser
 
@@ -156,7 +133,7 @@ func (r UserRepository) Update(ctx context.Context, existingUser entity.User, up
 
 	dbUser := r.entityToDBUser(user)
 
-	if err := db.Model(&model_db.User{}).Where("id = ?", user.ID).Updates(dbUser).Error; err != nil {
+	if err := r.getDB(ctx).Model(&model_db.User{}).Where("id = ?", user.ID).Updates(dbUser).Error; err != nil {
 		return nil, err
 	}
 

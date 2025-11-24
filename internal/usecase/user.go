@@ -4,18 +4,15 @@ import (
 	"context"
 	"time"
 
-	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	context_db "github.com/rifkiadrn/cassandra-explore/internal/context/db"
 	"github.com/rifkiadrn/cassandra-explore/internal/entity"
 	"github.com/rifkiadrn/cassandra-explore/internal/model"
 	model_api "github.com/rifkiadrn/cassandra-explore/internal/model/api"
 	"github.com/rifkiadrn/cassandra-explore/internal/utils"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type IUserRepo interface {
@@ -25,56 +22,50 @@ type IUserRepo interface {
 	Update(ctx context.Context, existingUser entity.User, updatedUser entity.User) (*entity.User, error)
 }
 
-type UserUseCase struct {
-	DB             *gorm.DB
-	NoSQLDB        *gocql.Session
-	Log            *logrus.Logger
-	Validate       *validator.Validate
-	UserRepository IUserRepo
-	JWTManager     *utils.JWTManager
+type IUserRepoNoSQL interface {
+	Create(ctx context.Context, user entity.User) (*entity.User, error)
 }
 
-func NewUserUseCase(db *gorm.DB, noSQLDB *gocql.Session, logger *logrus.Logger, validate *validator.Validate,
-	userRepository IUserRepo, jwtManager *utils.JWTManager) UserUseCase {
+type UserUseCase struct {
+	uow                 UnitOfWork
+	log                 *logrus.Logger
+	validate            *validator.Validate
+	userRepository      IUserRepo
+	userRepositoryNoSQL IUserRepoNoSQL
+	jwtManager          *utils.JWTManager
+}
+
+func NewUserUseCase(uow UnitOfWork, logger *logrus.Logger, validate *validator.Validate,
+	userRepository IUserRepo, userRepositoryNoSQL IUserRepoNoSQL, jwtManager *utils.JWTManager) UserUseCase {
 	return UserUseCase{
-		DB:             db,
-		NoSQLDB:        noSQLDB,
-		Log:            logger,
-		Validate:       validate,
-		UserRepository: userRepository,
-		JWTManager:     jwtManager,
+		uow:                 uow,
+		log:                 logger,
+		validate:            validate,
+		userRepository:      userRepository,
+		userRepositoryNoSQL: userRepositoryNoSQL,
+		jwtManager:          jwtManager,
 	}
 }
 
 func (userUC UserUseCase) Verify(ctx context.Context, request model_api.VerifyUserRequest) (model_api.Auth, error) {
 	// Validate request
-	if err := userUC.Validate.Struct(request); err != nil {
-		userUC.Log.Warnf("Invalid request body : %+v", err)
+	if err := userUC.validate.Struct(request); err != nil {
+		userUC.log.Warnf("Invalid request body : %+v", err)
 		return model_api.Auth{}, fiber.ErrBadRequest
 	}
 
 	// Verify JWT token
-	claims, err := userUC.JWTManager.ValidateToken(request.Token)
+	claims, err := userUC.jwtManager.ValidateToken(request.Token)
 	if err != nil {
-		userUC.Log.Warnf("Invalid JWT token: %+v", err)
+		userUC.log.Warnf("Invalid JWT token: %+v", err)
 		return model_api.Auth{}, fiber.ErrUnauthorized
 	}
-
-	// Start transaction
-	tx, txCtx := context_db.BeginTxWithContext(ctx, userUC.DB)
-	defer tx.Rollback()
 
 	// Find user by ID
-	userEntity, err := userUC.UserRepository.FindById(txCtx, claims.UserID.String())
+	userEntity, err := userUC.userRepository.FindById(ctx, claims.UserID.String())
 	if err != nil {
-		userUC.Log.Warnf("User not found for token subject: %+v", err)
+		userUC.log.Warnf("User not found for token subject: %+v", err)
 		return model_api.Auth{}, fiber.ErrUnauthorized
-	}
-
-	// Commit transaction
-	if err := tx.Commit().Error; err != nil {
-		userUC.Log.Warnf("Failed commit transaction : %+v", err)
-		return model_api.Auth{}, fiber.ErrInternalServerError
 	}
 
 	return model_api.Auth{
@@ -86,17 +77,20 @@ func (userUC UserUseCase) Verify(ctx context.Context, request model_api.VerifyUs
 
 func (userUC UserUseCase) Register(ctx context.Context, request model.RegisterUser) (model.User, error) {
 	// Validate request
-	if err := userUC.Validate.Struct(request); err != nil {
-		userUC.Log.Warnf("Invalid request body : %+v", err)
+	if err := userUC.validate.Struct(request); err != nil {
+		userUC.log.Warnf("Invalid request body : %+v", err)
 		return model.User{}, fiber.ErrBadRequest
 	}
 
 	// Start transaction
-	tx, txCtx := context_db.BeginTxWithContext(ctx, userUC.DB)
+	tx, txCtx, err := userUC.uow.Begin(ctx)
+	if err != nil {
+		return model.User{}, err
+	}
 	defer tx.Rollback()
 
 	// Check if username already exists
-	_, err := userUC.UserRepository.FindByUsername(txCtx, request.Username)
+	_, err = userUC.userRepository.FindByUsername(txCtx, request.Username)
 	if err == nil {
 		return model.User{}, fiber.ErrConflict
 	}
@@ -104,7 +98,7 @@ func (userUC UserUseCase) Register(ctx context.Context, request model.RegisterUs
 	// Hash password
 	hashed, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
 	if err != nil {
-		userUC.Log.Warnf("Failed to hash password : %+v", err)
+		userUC.log.Warnf("Failed to hash password : %+v", err)
 		return model.User{}, fiber.ErrInternalServerError
 	}
 
@@ -120,25 +114,22 @@ func (userUC UserUseCase) Register(ctx context.Context, request model.RegisterUs
 	}
 
 	// Create user via repository
-	createdUser, err := userUC.UserRepository.Create(txCtx, userEntity)
+	createdUser, err := userUC.userRepository.Create(txCtx, userEntity)
 	if err != nil {
-		userUC.Log.Warnf("Failed create user : %+v", err)
+		userUC.log.Warnf("Failed create user : %+v", err)
 		return model.User{}, fiber.ErrInternalServerError
 	}
 
 	// Commit transaction
-	if err := tx.Commit().Error; err != nil {
-		userUC.Log.Warnf("Failed commit transaction : %+v", err)
+	if err := tx.Commit(); err != nil {
+		userUC.log.Warnf("Failed commit transaction : %+v", err)
 		return model.User{}, fiber.ErrInternalServerError
 	}
 
-	id := gocql.TimeUUID()
+	// double create to cassandra
+	_, _ = userUC.userRepositoryNoSQL.Create(ctx, *createdUser)
 
 	// Create user in Cassandra
-
-	if err := userUC.NoSQLDB.Query(`INSERT INTO users (id, name, username) VALUES (?, ?, ?)`, id, request.Name, request.Username).Exec(); err != nil {
-		return model.User{}, err
-	}
 
 	// Convert domain entity to response DTO
 	return model.User{
@@ -151,38 +142,28 @@ func (userUC UserUseCase) Register(ctx context.Context, request model.RegisterUs
 
 func (userUC UserUseCase) Login(ctx context.Context, request model.LoginUser) (model.LoginResponse, error) {
 	// Validate request
-	if err := userUC.Validate.Struct(request); err != nil {
-		userUC.Log.Warnf("Invalid request body : %+v", err)
+	if err := userUC.validate.Struct(request); err != nil {
+		userUC.log.Warnf("Invalid request body : %+v", err)
 		return model.LoginResponse{}, fiber.ErrBadRequest
 	}
 
-	// Start transaction
-	tx, txCtx := context_db.BeginTxWithContext(ctx, userUC.DB)
-	defer tx.Rollback()
-
 	// Find user by username
-	userEntity, err := userUC.UserRepository.FindByUsername(txCtx, request.Username)
+	userEntity, err := userUC.userRepository.FindByUsername(ctx, request.Username)
 	if err != nil {
-		userUC.Log.Warnf("Failed find user by username : %+v", err)
+		userUC.log.Warnf("Failed find user by username : %+v", err)
 		return model.LoginResponse{}, fiber.ErrUnauthorized
 	}
 
 	// Check password
 	if err := bcrypt.CompareHashAndPassword([]byte((*userEntity).Password), []byte(request.Password)); err != nil {
-		userUC.Log.Warnf("Invalid password : %+v", err)
+		userUC.log.Warnf("Invalid password : %+v", err)
 		return model.LoginResponse{}, fiber.ErrUnauthorized
 	}
 
 	// Generate JWT token
-	token, err := userUC.JWTManager.GenerateToken((*userEntity).ID, (*userEntity).Username)
+	token, err := userUC.jwtManager.GenerateToken((*userEntity).ID, (*userEntity).Username)
 	if err != nil {
-		userUC.Log.Warnf("Failed to generate token : %+v", err)
-		return model.LoginResponse{}, fiber.ErrInternalServerError
-	}
-
-	// Commit transaction
-	if err := tx.Commit().Error; err != nil {
-		userUC.Log.Warnf("Failed commit transaction : %+v", err)
+		userUC.log.Warnf("Failed to generate token : %+v", err)
 		return model.LoginResponse{}, fiber.ErrInternalServerError
 	}
 
@@ -199,10 +180,7 @@ func (userUC UserUseCase) Login(ctx context.Context, request model.LoginUser) (m
 }
 
 func (userUC UserUseCase) FindById(ctx context.Context, userID string) (entity.User, error) {
-	tx, txCtx := context_db.BeginTxWithContext(ctx, userUC.DB)
-	defer tx.Rollback()
-
-	user, err := userUC.UserRepository.FindById(txCtx, userID)
+	user, err := userUC.userRepository.FindById(ctx, userID)
 	if err != nil {
 		return entity.User{}, err
 	}
@@ -210,19 +188,23 @@ func (userUC UserUseCase) FindById(ctx context.Context, userID string) (entity.U
 }
 
 func (userUC UserUseCase) UpdateUser(ctx context.Context, userID string, user entity.User) (entity.User, error) {
-	tx, txCtx := context_db.BeginTxWithContext(ctx, userUC.DB)
+	// Start transaction
+	tx, txCtx, err := userUC.uow.Begin(ctx)
+	if err != nil {
+		return entity.User{}, err
+	}
 	defer tx.Rollback()
 
-	existingUser, err := userUC.UserRepository.FindById(txCtx, userID)
+	existingUser, err := userUC.userRepository.FindById(txCtx, userID)
 	if err != nil {
 		return entity.User{}, err
 	}
-	updatedUser, err := userUC.UserRepository.Update(txCtx, *existingUser, user)
+	updatedUser, err := userUC.userRepository.Update(txCtx, *existingUser, user)
 	if err != nil {
 		return entity.User{}, err
 	}
 
-	if err := tx.Commit().Error; err != nil {
+	if err := tx.Commit(); err != nil {
 		return entity.User{}, err
 	}
 

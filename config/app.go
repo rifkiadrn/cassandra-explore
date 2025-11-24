@@ -5,6 +5,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 
+	context_db "github.com/rifkiadrn/cassandra-explore/internal/context/db"
 	"github.com/rifkiadrn/cassandra-explore/internal/handler/rest"
 	"github.com/rifkiadrn/cassandra-explore/internal/handler/rest/middleware"
 	"github.com/rifkiadrn/cassandra-explore/internal/handler/rest/router"
@@ -26,20 +27,24 @@ type BootstrapConfig struct {
 }
 
 func Bootstrap(config *BootstrapConfig) {
+
 	// setup repositories
-	userRepository := repository.NewUserRepository(config.Log)
+	userRepository := repository.NewUserRepository(config.DB, config.Log)
+	userRepositoryNoSQL := repository.NewUserRepositoryNoSQL(config.NoSQLDB)
+	blogRepository := repository.NewBlogRepository(config.DB, config.Log)
 
 	// setup JWT manager
 	jwtManager := utils.NewJWTManager(config.Config.GetString("SECRET_KEY")) // TODO: move to config
 
 	// setup use cases
-	userUseCase := usecase.NewUserUseCase(config.DB, config.NoSQLDB, config.Log, config.Validate, userRepository, jwtManager)
+	// dbTrx/unitOfWork
+	unitOfWork := context_db.NewGormUnitOfWork(config.DB)
+
+	userUseCase := usecase.NewUserUseCase(unitOfWork, config.Log, config.Validate, userRepository, userRepositoryNoSQL, jwtManager)
 
 	userHandler := rest.NewUserHandler(userUseCase, config.Log)
 
-	blogRepository := repository.NewBlogRepository(config.Log)
-
-	blogUsecase := usecase.NewBlogUseCase(config.DB, config.NoSQLDB, config.Log, config.Validate, blogRepository)
+	blogUsecase := usecase.NewBlogUseCase(unitOfWork, config.Log, config.Validate, blogRepository)
 
 	blogHandler := rest.NewBlogHandler(blogUsecase, config.Log)
 

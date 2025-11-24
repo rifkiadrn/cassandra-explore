@@ -7,11 +7,9 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	context_db "github.com/rifkiadrn/cassandra-explore/internal/context/db"
 	"github.com/rifkiadrn/cassandra-explore/internal/entity"
 	authContext "github.com/rifkiadrn/cassandra-explore/internal/handler/rest/context"
 	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 )
 
 type IBlog interface {
@@ -20,21 +18,19 @@ type IBlog interface {
 }
 
 type BlogUseCase struct {
-	DB             *gorm.DB
-	NoSQLDB        *gocql.Session
-	Log            *logrus.Logger
-	Validate       *validator.Validate
-	BlogRepository IBlog
+	uow            UnitOfWork
+	log            *logrus.Logger
+	validate       *validator.Validate
+	blogRepository IBlog
 }
 
-func NewBlogUseCase(db *gorm.DB, noSQLDB *gocql.Session, logger *logrus.Logger, validate *validator.Validate,
+func NewBlogUseCase(uow UnitOfWork, logger *logrus.Logger, validate *validator.Validate,
 	blogRepository IBlog) BlogUseCase {
 	return BlogUseCase{
-		DB:             db,
-		NoSQLDB:        noSQLDB,
-		Log:            logger,
-		Validate:       validate,
-		BlogRepository: blogRepository,
+		uow:            uow,
+		log:            logger,
+		validate:       validate,
+		blogRepository: blogRepository,
 	}
 }
 
@@ -57,43 +53,17 @@ func (b BlogUseCase) CreateBlog(ctx context.Context, request entity.Blog) (entit
 	}
 
 	// Validate request
-	if err := b.Validate.Struct(request); err != nil {
-		b.Log.Warnf("Invalid request body : %+v", err)
+	if err := b.validate.Struct(request); err != nil {
+		b.log.Warnf("Invalid request body : %+v", err)
 		return entity.Blog{}, fiber.ErrBadRequest
 	}
 
-	// Create blog in Cassandra
-
-	authorIdStr := blogEntity.AuthorID.String()
-
-	authorId, _ := gocql.ParseUUID(authorIdStr)
-
-	blogId, _ := gocql.ParseUUID(blogEntity.ID.String())
-
-	if err := b.NoSQLDB.Query(`INSERT INTO blogs.blogs_by_author(author_id, username, id, content, ts) VALUES (?, ?, ?, ?, ?)`, authorId, blogEntity.Username, blogId, blogEntity.Content, gocql.UUIDFromTime(blogEntity.Ts)).Exec(); err != nil {
+	res, err := b.blogRepository.Create(ctx, blogEntity)
+	if err != nil {
 		return entity.Blog{}, err
 	}
 
-	return blogEntity, nil
-
-	// // Start transaction
-	// tx, txCtx := context_db.BeginTxWithContext(ctx, b.DB)
-	// defer tx.Rollback()
-
-	// // Create blog via repository
-	// createdBlog, err := b.BlogRepository.Create(txCtx, blogEntity)
-	// if err != nil {
-	// 	b.Log.Warnf("Failed create blog : %+v", err)
-	// 	return entity.Blog{}, fiber.ErrInternalServerError
-	// }
-
-	// // Commit transaction
-	// if err := tx.Commit().Error; err != nil {
-	// 	b.Log.Warnf("Failed commit transaction : %+v", err)
-	// 	return entity.Blog{}, fiber.ErrInternalServerError
-	// }
-
-	// return *createdBlog, nil
+	return *res, nil
 }
 
 func (b BlogUseCase) GetBlogs(ctx context.Context) ([]entity.Blog, error) {
@@ -103,12 +73,8 @@ func (b BlogUseCase) GetBlogs(ctx context.Context) ([]entity.Blog, error) {
 		return nil, err
 	}
 
-	// Start transaction
-	tx, txCtx := context_db.BeginTxWithContext(ctx, b.DB)
-	defer tx.Rollback()
-
 	// Get blogs via repository
-	blogs, err := b.BlogRepository.FindAll(txCtx, user.ID.String())
+	blogs, err := b.blogRepository.FindAll(ctx, user.ID.String())
 	if err != nil {
 		return nil, err
 	}

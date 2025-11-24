@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/gocql/gocql"
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
@@ -9,7 +9,7 @@ import (
 func NewNoSQLDatabase(viper *viper.Viper, log *logrus.Logger) *gocql.Session {
 	viper.AutomaticEnv()
 
-	databaseKeyspace := viper.GetString("database.keyspace")
+	databaseKeyspace := viper.GetString("database.cassandra_keyspace")
 	if viper.GetString("DB_KEYSPACE") != "" {
 		databaseKeyspace = viper.GetString("DB_KEYSPACE")
 	}
@@ -25,12 +25,4 @@ func NewNoSQLDatabase(viper *viper.Viper, log *logrus.Logger) *gocql.Session {
 	}
 
 	return session
-}
-
-type logrusWriter struct {
-	Logger *logrus.Logger
-}
-
-func (l *logrusWriter) Printf(message string, args ...interface{}) {
-	l.Logger.Tracef(message, args...)
 }

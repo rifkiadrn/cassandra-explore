@@ -3,8 +3,8 @@ package usecase
 import (
 	"context"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/go-playground/validator/v10"
-	"github.com/gocql/gocql"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	context_db "github.com/rifkiadrn/cassandra-explore/internal/context/db"
@@ -64,7 +64,13 @@ func (b BlogUseCase) CreateBlog(ctx context.Context, request entity.Blog) (entit
 
 	// Create blog in Cassandra
 
-	if err := b.NoSQLDB.Query(`INSERT INTO blogs.blogs_by_author(author_id, username, id, content, ts) VALUES (?, ?, ?, ?, ?)`, blogEntity.AuthorID, blogEntity.Username, blogEntity.ID, blogEntity.Content, blogEntity.Ts).Exec(); err != nil {
+	authorIdStr := blogEntity.AuthorID.String()
+
+	authorId, _ := gocql.ParseUUID(authorIdStr)
+
+	blogId, _ := gocql.ParseUUID(blogEntity.ID.String())
+
+	if err := b.NoSQLDB.Query(`INSERT INTO blogs.blogs_by_author(author_id, username, id, content, ts) VALUES (?, ?, ?, ?, ?)`, authorId, blogEntity.Username, blogId, blogEntity.Content, gocql.UUIDFromTime(blogEntity.Ts)).Exec(); err != nil {
 		return entity.Blog{}, err
 	}
 

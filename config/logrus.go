@@ -13,3 +13,11 @@ func NewLogger(viper *viper.Viper) *logrus.Logger {
 
 	return log
 }
+
+type logrusWriter struct {
+	Logger *logrus.Logger
+}
+
+func (l *logrusWriter) Printf(message string, args ...interface{}) {
+	l.Logger.Tracef(message, args...)
+}

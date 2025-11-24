@@ -10,9 +10,9 @@
       "level": 6
     },
     "database": {
-      "hosts": ["cassandra-seed:9042"],
-      "host": "cassandra-seed",
-      "keyspace": "blogs",
+      "cassandra_hosts": ["cassandra-seed:9042"],
+      "cassandra_host": "cassandra-seed",
+      "cassandra_keyspace": "blogs",
       "pool": {
         "idle": 10,
         "max": 100,

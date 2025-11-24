@@ -47,7 +47,7 @@ RUN ls -la /app/
 RUN ls -la /app/app
 
 RUN chmod +x ./files/deployment/entrypoint.sh
-# RUN chmod +x ./files/deployment/dbmate.sh
+RUN chmod +x ./files/deployment/dbmate.sh
 RUN chmod +x /app/app
 # RUN chown $USERNAME:$USERNAME /app/app
 # RUN chown $USERNAME:$USERNAME ./files/deployment/entrypoint.sh

@@ -2,10 +2,12 @@ package usecase
 
 import (
 	"context"
+	"time"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/go-playground/validator/v10"
-	"github.com/gocql/gocql"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	context_db "github.com/rifkiadrn/cassandra-explore/internal/context/db"
 	"github.com/rifkiadrn/cassandra-explore/internal/entity"
 	"github.com/rifkiadrn/cassandra-explore/internal/model"
@@ -89,6 +91,47 @@ func (userUC UserUseCase) Register(ctx context.Context, request model.RegisterUs
 		return model.User{}, fiber.ErrBadRequest
 	}
 
+	// Start transaction
+	tx, txCtx := context_db.BeginTxWithContext(ctx, userUC.DB)
+	defer tx.Rollback()
+
+	// Check if username already exists
+	_, err := userUC.UserRepository.FindByUsername(txCtx, request.Username)
+	if err == nil {
+		return model.User{}, fiber.ErrConflict
+	}
+
+	// Hash password
+	hashed, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
+	if err != nil {
+		userUC.Log.Warnf("Failed to hash password : %+v", err)
+		return model.User{}, fiber.ErrInternalServerError
+	}
+
+	// Create domain entity
+	userEntity := entity.User{
+		ID:        uuid.New(),
+		Name:      request.Name,
+		Username:  request.Username,
+		Password:  string(hashed),
+		Token:     uuid.New().String(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	// Create user via repository
+	createdUser, err := userUC.UserRepository.Create(txCtx, userEntity)
+	if err != nil {
+		userUC.Log.Warnf("Failed create user : %+v", err)
+		return model.User{}, fiber.ErrInternalServerError
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		userUC.Log.Warnf("Failed commit transaction : %+v", err)
+		return model.User{}, fiber.ErrInternalServerError
+	}
+
 	id := gocql.TimeUUID()
 
 	// Create user in Cassandra
@@ -97,69 +140,14 @@ func (userUC UserUseCase) Register(ctx context.Context, request model.RegisterUs
 		return model.User{}, err
 	}
 
+	// Convert domain entity to response DTO
 	return model.User{
-		Id:       id.String(),
-		Name:     request.Name,
-		Username: request.Username,
+		Id:       (*createdUser).ID.String(),
+		Name:     (*createdUser).Name,
+		Username: (*createdUser).Username,
+		Token:    (*createdUser).Token,
 	}, nil
 }
-
-// func (userUC UserUseCase) Register(ctx context.Context, request model.RegisterUser) (model.User, error) {
-// 	// Validate request
-// 	if err := userUC.Validate.Struct(request); err != nil {
-// 		userUC.Log.Warnf("Invalid request body : %+v", err)
-// 		return model.User{}, fiber.ErrBadRequest
-// 	}
-
-// 	// Start transaction
-// 	tx, txCtx := context_db.BeginTxWithContext(ctx, userUC.DB)
-// 	defer tx.Rollback()
-
-// 	// Check if username already exists
-// 	_, err := userUC.UserRepository.FindByUsername(txCtx, request.Username)
-// 	if err == nil {
-// 		return model.User{}, fiber.ErrConflict
-// 	}
-
-// 	// Hash password
-// 	hashed, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
-// 	if err != nil {
-// 		userUC.Log.Warnf("Failed to hash password : %+v", err)
-// 		return model.User{}, fiber.ErrInternalServerError
-// 	}
-
-// 	// Create domain entity
-// 	userEntity := entity.User{
-// 		ID:        uuid.New(),
-// 		Name:      request.Name,
-// 		Username:  request.Username,
-// 		Password:  string(hashed),
-// 		Token:     uuid.New().String(),
-// 		CreatedAt: time.Now(),
-// 		UpdatedAt: time.Now(),
-// 	}
-
-// 	// Create user via repository
-// 	createdUser, err := userUC.UserRepository.Create(txCtx, userEntity)
-// 	if err != nil {
-// 		userUC.Log.Warnf("Failed create user : %+v", err)
-// 		return model.User{}, fiber.ErrInternalServerError
-// 	}
-
-// 	// Commit transaction
-// 	if err := tx.Commit().Error; err != nil {
-// 		userUC.Log.Warnf("Failed commit transaction : %+v", err)
-// 		return model.User{}, fiber.ErrInternalServerError
-// 	}
-
-// 	// Convert domain entity to response DTO
-// 	return model.User{
-// 		Id:       (*createdUser).ID.String(),
-// 		Name:     (*createdUser).Name,
-// 		Username: (*createdUser).Username,
-// 		Token:    (*createdUser).Token,
-// 	}, nil
-// }
 
 func (userUC UserUseCase) Login(ctx context.Context, request model.LoginUser) (model.LoginResponse, error) {
 	// Validate request

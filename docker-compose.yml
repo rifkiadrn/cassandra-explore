@@ -1,6 +1,19 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:14.1-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5441:5432"
+    volumes: 
+      - db:/var/lib/postgresql/data
+    networks:
+      - cassandra-explore-network
+
   api:
     container_name: cassandra-explore-api
     ports:
@@ -16,6 +29,8 @@ services:
       args:
         - GITHUB_TOKEN=$GITHUB_TOKEN
     depends_on:
+      db:
+        condition: service_started
       cassandra-seed:
         condition: service_healthy  # 👈 wait for Cassandra to be ready
     networks:
@@ -77,6 +92,8 @@ services:
       - cassandra-explore-network
 
 volumes:
+  db:
+    driver: local
   seed_data:
   node2_data:
   node3_data:

@@ -3,8 +3,8 @@ info:
   contact:
     email: rifkiadrn12@gmail.com
     name: Rifki Adrian
-  description: Open API specification which describes the API for Data ELT
-  title: Data ELT API
+  description: Open API specification which describes the API for Cassandra Project
+  title: Cassandra Project
   version: 1.0.0
 servers:
   - url: /

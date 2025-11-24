@@ -9,6 +9,7 @@ import (
 func main() {
 	viperConfig := config.NewViper()
 	log := config.NewLogger(viperConfig)
+	db := config.NewDatabase(viperConfig, log)
 	noSQLDB := config.NewNoSQLDatabase(viperConfig, log)
 	validate := config.NewValidator(viperConfig)
 	app := config.NewFiber(viperConfig)
@@ -16,6 +17,7 @@ func main() {
 	fmt.Printf("noSQLDB: %d \n", noSQLDB)
 
 	config.Bootstrap(&config.BootstrapConfig{
+		DB:       db,
 		NoSQLDB:  noSQLDB,
 		App:      app,
 		Log:      log,

@@ -1,8 +1,8 @@
 package config
 
 import (
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/go-playground/validator/v10"
-	"github.com/gocql/gocql"
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/rifkiadrn/cassandra-explore/internal/handler/rest"
